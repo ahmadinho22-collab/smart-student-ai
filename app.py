@@ -76,15 +76,7 @@ def send_alert_email(student_message):
         msg["Subject"] = "🚨 بلاغ طالب - حالة محتملة"
         msg["From"] = sender_email
         msg["To"] = receiver_email
-body = f"""
-🚨 تنبيه من المساعد الذكي:
 
-👤 اسم الطالب: {st.session_state.student_name}
-🆔 رقم الطالب: {st.session_state.student_id}
-
-📩 الرسالة:
-{student_message}
-"""
         server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
         server.login(sender_email, sender_password)
         server.send_message(msg)
