@@ -14,7 +14,24 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-flash-latest")
+if "student_name" not in st.session_state:
+    st.session_state.student_name = None
 
+if not st.session_state.student_name:
+    st.title("🎓 تسجيل الطالب")
+
+    name = st.text_input("اسم الطالب")
+    student_id = st.text_input("رقم الطالب")
+
+    if st.button("دخول"):
+        if name and student_id:
+            st.session_state.student_name = name
+            st.session_state.student_id = student_id
+            st.rerun()
+        else:
+            st.warning("الرجاء إدخال جميع البيانات")
+
+    st.stop()
 # =========================
 # ⚠️ كلمات الخطر
 # =========================
@@ -59,7 +76,15 @@ def send_alert_email(student_message):
         msg["Subject"] = "🚨 بلاغ طالب - حالة محتملة"
         msg["From"] = sender_email
         msg["To"] = receiver_email
+body = f"""
+🚨 تنبيه من المساعد الذكي:
 
+👤 اسم الطالب: {st.session_state.student_name}
+🆔 رقم الطالب: {st.session_state.student_id}
+
+📩 الرسالة:
+{student_message}
+"""
         server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
         server.login(sender_email, sender_password)
         server.send_message(msg)
