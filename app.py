@@ -2,7 +2,8 @@ import streamlit as st
 import google.generativeai as genai
 
 st.title("🤖 مساعد الطالب الذكي")
-
+for m in genai.list_models():
+    st.write(m.name)
 # جلب المفتاح
 api_key = st.secrets.get("GEMINI_API_KEY")
 
