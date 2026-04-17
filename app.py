@@ -1,8 +1,11 @@
 import streamlit as st
 import google.generativeai as genai
+import smtplib
+from email.mime.text import MIMEText
 
-st.title("🤖 مساعد الطالب الذكي")
-
+# =========================
+# 🔐 إعداد API
+# =========================
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
@@ -10,9 +13,65 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-
-# 🔥 النموذج الصحيح المتاح لحسابك
 model = genai.GenerativeModel("gemini-flash-latest")
+
+# =========================
+# ⚠️ كلمات الخطر
+# =========================
+unsafe_keywords = [
+    "تحرش", "اغتصاب", "لمس غير لائق",
+    "تنمر", "يسخر مني", "يضحك علي",
+    "ضرب", "ضربني", "يعنفني",
+    "تهديد", "يهددني",
+    "ابتزاز", "يبتزني",
+    "عنف أسري", "أبي يضربني", "أمي تضربني",
+    "أخاف", "في خطر", "أذوني"
+]
+
+def detect_unsafe_message(text):
+    for word in unsafe_keywords:
+        if word in text:
+            return True
+    return False
+
+# =========================
+# 📧 إرسال إيميل
+# =========================
+def send_alert_email(student_message):
+    try:
+        sender_email = st.secrets.get("EMAIL_USER")
+        sender_password = st.secrets.get("EMAIL_PASS")
+        receiver_email = st.secrets.get("SCHOOL_EMAIL")
+
+        body = f"""
+        🚨 تنبيه من المساعد الذكي:
+
+        تم رصد رسالة قد تشير إلى حالة خطر:
+
+        ------------------------
+        {student_message}
+        ------------------------
+
+        يرجى المتابعة بشكل عاجل.
+        """
+
+        msg = MIMEText(body)
+        msg["Subject"] = "🚨 بلاغ طالب - حالة محتملة"
+        msg["From"] = sender_email
+        msg["To"] = receiver_email
+
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+
+    except Exception as e:
+        st.error(f"خطأ في إرسال الإيميل: {e}")
+
+# =========================
+# 🎨 واجهة التطبيق
+# =========================
+st.title("🤖 مساعد الطالب الذكي")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -25,16 +84,52 @@ prompt = st.chat_input("كيف أساعدك اليوم؟")
 
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # =========================
+    # 🛑 فحص الأمان
+    # =========================
+    if detect_unsafe_message(prompt):
+        send_alert_email(prompt)
+
+        warning_message = """
+        ⚠️ أنا هنا لدعمك.
+
+        لاحظت أن رسالتك قد تشير إلى موقف صعب أو خطر.  
+        حرصًا على سلامتك، سيتم إشعار الجهة المختصة في مدرستك لمساعدتك بطريقة آمنة وسرّية.
+
+        أنت لست وحدك 💙
+        """
+
+        with st.chat_message("assistant"):
+            st.markdown(warning_message)
+
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": warning_message
+        })
+
+        st.stop()
+
+    # =========================
+    # 🤖 الرد الذكي
+    # =========================
     try:
-        response = model.generate_content(prompt)
+        response = model.generate_content(
+            f"أنت مساعد ذكي للطلاب. اشرح بطريقة سهلة وبسيطة ومناسبة للطلاب:\n{prompt}"
+        )
+
         reply = response.text
 
         with st.chat_message("assistant"):
             st.markdown(reply)
 
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": reply
+        })
+
     except Exception as e:
-        st.error(f"خطأ: {e}")
+        st.error(f"حدث خطأ: {e}")
