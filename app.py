@@ -1,152 +1,126 @@
-import streamlit as st
-import google.generativeai as genai
-import smtplib
-from email.mime.text import MIMEText
+// -------------------------------
+// 1. الإعدادات الأساسية
+// -------------------------------
+import express from "express";
+import bodyParser from "body-parser";
+import nodemailer from "nodemailer";
+import { OpenAI } from "openai";
 
-# =========================
-# 🔐 إعداد API
-# =========================
-api_key = st.secrets.get("GEMINI_API_KEY")
+const app = express();
+app.use(bodyParser.json());
 
-if not api_key:
-    st.error("❌ لم يتم العثور على API KEY")
-    st.stop()
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-flash-latest")
-if "student_name" not in st.session_state:
-    st.session_state.student_name = None
+// -------------------------------
+// 2. دالة إرسال البريد للإدارة
+// -------------------------------
+async function sendAlertEmail(studentName, studentId, message) {
+  const transporter = nodemailer.createTransport({
+    service: "gmail", 
+    auth: {
+      user: process.env.ALERT_EMAIL,
+      pass: process.env.ALERT_EMAIL_PASS
+    }
+  });
 
-if not st.session_state.student_name:
-    st.title("🎓 تسجيل الطالب")
+  const mailOptions = {
+    from: process.env.ALERT_EMAIL,
+    to: "ahmadmoaidi@gmail.com",
+    subject: "🚨 تنبيه عاجل: تم رصد حالة محتملة",
+    text: `
+تم اكتشاف حالة حساسة من قبل أحد الطلاب.
 
-    name = st.text_input("اسم الطالب")
-    student_id = st.text_input("رقم الطالب")
+اسم الطالب: ${studentName}
+رقم الطالب: ${studentId}
 
-    if st.button("دخول"):
-        if name and student_id:
-            st.session_state.student_name = name
-            st.session_state.student_id = student_id
-            st.rerun()
-        else:
-            st.warning("الرجاء إدخال جميع البيانات")
+الرسالة التي كتبها:
+"${message}"
 
-    st.stop()
-# =========================
-# ⚠️ كلمات الخطر
-# =========================
-unsafe_keywords = [
-    "تحرش", "اغتصاب", "لمس غير لائق",
-    "تنمر", "يسخر مني", "يضحك علي",
-    "ضرب", "ضربني", "يعنفني",
-    "تهديد", "يهددني",
-    "ابتزاز", "يبتزني",
-    "عنف أسري", "أبي يضربني", "أمي تضربني",
-    "أخاف", "في خطر", "أذوني"
-]
+يرجى التعامل مع الحالة بشكل عاجل.
+`
+  };
 
-def detect_unsafe_message(text):
-    for word in unsafe_keywords:
-        if word in text:
-            return True
-    return False
+  await transporter.sendMail(mailOptions);
+}
 
-# =========================
-# 📧 إرسال إيميل
-# =========================
-def send_alert_email(student_message):
-    try:
-        sender_email = st.secrets.get("EMAIL_USER")
-        sender_password = st.secrets.get("EMAIL_PASS")
-        receiver_email = st.secrets.get("SCHOOL_EMAIL")
+// كلمات حساسة
+const dangerWords = [
+  "تحرش", "اغتصاب", "لمس غير لائق",
+  "تنمر", "يضربني", "عنف", "تعنيف",
+  "عنف أسري", "يهددني", "تهديد",
+  "ابتزاز", "صور", "فضيحة"
+];
 
-        body = f"""
-        🚨 تنبيه من المساعد الذكي:
+// -------------------------------
+// 3. بداية المحادثة – تسجيل هوية الطالب
+// -------------------------------
+app.post("/start", async (req, res) => {
+  const { name, studentId } = req.body;
 
-        تم رصد رسالة قد تشير إلى حالة خطر:
+  if (!name || !studentId) {
+    return res.json({ error: "الرجاء إدخال الاسم والرقم المدرسي لبدء المحادثة." });
+  }
 
-        ------------------------
-        {student_message}
-        ------------------------
+  // نخزن بيانات الطالب داخل session بسيط (يمكن تغييره لقاعدة بيانات)
+  req.session = { name, studentId };
 
-        يرجى المتابعة بشكل عاجل.
-        """
+  return res.json({
+    message: `مرحبًا ${name}! أنا هنا لمساعدتك في الدراسة أو المشكلات المدرسية.`
+  });
+});
 
-        msg = MIMEText(body)
-        msg["Subject"] = "🚨 بلاغ طالب - حالة محتملة"
-        msg["From"] = sender_email
-        msg["To"] = receiver_email
+// -------------------------------
+// 4. التفاعل مع المساعد
+// -------------------------------
+app.post("/chat", async (req, res) => {
+  const { message } = req.body;
+  const session = req.session;
 
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login(sender_email, sender_password)
-        server.send_message(msg)
-        server.quit()
+  if (!session) {
+    return res.json({
+      error: "يجب تسجيل الاسم والرقم أولاً عبر /start"
+    });
+  }
 
-    except Exception as e:
-        st.error(f"خطأ في إرسال الإيميل: {e}")
+  const studentName = session.name;
+  const studentId = session.studentId;
 
-# =========================
-# 🎨 واجهة التطبيق
-# =========================
-st.title("🤖 مساعد الطالب الذكي")
+  // -------------------------------
+  // 5. اكتشاف الكلمات الحساسة
+  // -------------------------------
+  const foundDanger = dangerWords.some(word => message.includes(word));
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+  if (foundDanger) {
+    // أرسل بريدًا للإدارة
+    sendAlertEmail(studentName, studentId, message);
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    // رسالة للطالب (لطيفة وغير مخيفة)
+    return res.json({
+      alert: true,
+      message:
+        "شكرًا لثقتك. لاحظتُ أن رسالتك تحتوي على مشكلة قد تحتاج إلى دعم من مختصين. سيتم تحويل الموضوع للجهة المناسبة في المدرسة لمساعدتك، وسيتم التعامل معه بسرية تامة."
+    });
+  }
 
-prompt = st.chat_input("كيف أساعدك اليوم؟")
+  // -------------------------------
+  // 6. استدعاء API للدعم الدراسي
+  // -------------------------------
+  const aiResponse = await client.responses.create({
+    model: "gpt-4.1-mini",
+    input: `الطالب: ${studentName} (${studentId}) يسأل: ${message}`
+  });
 
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+  res.json({
+    alert: false,
+    answer: aiResponse.output[0].content[0].text
+  });
+});
 
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # =========================
-    # 🛑 فحص الأمان
-    # =========================
-    if detect_unsafe_message(prompt):
-        send_alert_email(prompt)
-
-        warning_message = """
-        ⚠️ أنا هنا لدعمك.
-
-        لاحظت أن رسالتك قد تشير إلى موقف صعب أو خطر.  
-        حرصًا على سلامتك، سيتم إشعار الجهة المختصة في مدرستك لمساعدتك بطريقة آمنة وسرّية.
-
-        أنت لست وحدك 💙
-        """
-
-        with st.chat_message("assistant"):
-            st.markdown(warning_message)
-
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": warning_message
-        })
-
-        st.stop()
-
-    # =========================
-    # 🤖 الرد الذكي
-    # =========================
-    try:
-        response = model.generate_content(
-            f"أنت مساعد ذكي للطلاب. اشرح بطريقة سهلة وبسيطة ومناسبة للطلاب:\n{prompt}"
-        )
-
-        reply = response.text
-
-        with st.chat_message("assistant"):
-            st.markdown(reply)
-
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": reply
-        })
-
-    except Exception as e:
-        st.error(f"حدث خطأ: {e}")
+// -------------------------------
+// 7. تشغيل السيرفر
+// -------------------------------
+app.listen(3000, () => {
+  console.log("Assistant running on port 3000");
+});
