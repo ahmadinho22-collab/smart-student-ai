@@ -63,7 +63,7 @@ def send_alert_email(student_message):
     try:
         sender_email = st.secrets.get("EMAIL_USER")
         sender_password = st.secrets.get("EMAIL_PASS")
-        receiver_email = st.secrets.get("ahmadmoaidi@gmail.com")
+        receiver_email = st.secrets.get("SCHOOL_EMAIL")
 
         body = f"""
 🚨 تنبيه من المساعد الذكي
