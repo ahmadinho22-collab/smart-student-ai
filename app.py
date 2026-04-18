@@ -54,7 +54,6 @@ const dangerWords = [
 ];
 
 // -------------------------------
-// 3. بداية المحادثة – تسجيل هوية الطالب
 // -------------------------------
 app.post("/start", async (req, res) => {
   const { name, studentId } = req.body;
